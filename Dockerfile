@@ -8,6 +8,7 @@
 # For more information, see https://docs.docker.com/dhi/
 
 # Use the dev image to build and install dependencies.
+# The builder stage is also used directly in development (see compose.yaml).
 FROM dhi.io/python:3.12-dev AS builder
 
 WORKDIR /app
@@ -17,19 +18,11 @@ ENV PATH="/venv/bin:$PATH"
 
 # Download dependencies as a separate step to take advantage of Docker's caching.
 # Leverage a cache mount to /root/.cache/pip to speed up subsequent builds.
-# Leverage a bind mount to requirements.txt to avoid having to copy them into
-# this layer.
+# Leverage a bind mount to requirements.txt to avoid having to copy them
+# into this layer.
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=requirements.txt,target=requirements.txt \
     pip install -r requirements.txt
-
-# Use the minimal runtime image. It runs as nonroot by default.
-FROM dhi.io/python:3.12
-
-WORKDIR /app
-
-COPY --from=builder /venv /venv
-ENV PATH="/venv/bin:$PATH"
 
 # Copy the source code into the container.
 COPY . .
@@ -38,4 +31,19 @@ COPY . .
 EXPOSE 8000
 
 # Run the application.
+CMD ["/venv/bin/python3", "-m", "uvicorn", "app:app", "--host=0.0.0.0", "--port=8000"]
+
+
+# Use the minimal runtime image for production. It runs as nonroot by default.
+FROM dhi.io/python:3.12
+
+WORKDIR /app
+
+COPY --from=builder /venv /venv
+ENV PATH="/venv/bin:$PATH"
+
+COPY --from=builder /app .
+
+EXPOSE 8000
+
 CMD ["/venv/bin/python3", "-m", "uvicorn", "app:app", "--host=0.0.0.0", "--port=8000"]
